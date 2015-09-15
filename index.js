@@ -15,12 +15,52 @@ var server = restify.createServer({
 var port = process.env.PORT || 3000;
 
 server.use(restify.queryParser());
+server.use(
+  function crossOrigin(req,res,next){
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "X-Requested-With");
+    return next();
+  }
+);
 
 server.get(/^\/comics\/([0-9]{4})/, function (req, res) {
   comics.load({
     'release_year': req.params[0]
   }, function (err, rows) {
     res.send(200, rows || []);
+  });
+});
+
+server.get('/fetch', function (req, res) {
+  var page = (req.params.page || 0) * 50;
+
+  var sql = 'select * from comics where 1=1';
+  if(req.params.lastUpdate) {
+    sql += ' and last_update > ' + mysql.escape(req.params.lastUpdate);
+  }
+  if(req.params.lastId) {
+    sql += ' and id > ' + mysql.escape(req.params.lastId);
+  }
+  sql += ' order by last_update, id';
+  sql += ' limit 50 ';
+  sql += ' offset ' + page
+
+  db.query(sql, function (err, rows) {
+    if(err) throw err;
+
+    res.send(200, {
+      'comics': rows,
+      'page': page + 1,
+      'total_pages': 1
+    });
+  })
+});
+
+server.get('/update', function (req, res) {
+  db.query('select max(last_update) last_update, max(id) last_id from comics', function (err, rows) {
+    if(err) throw err;
+
+    res.send(200, rows[0]);
   });
 });
 
