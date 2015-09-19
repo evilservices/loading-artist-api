@@ -32,28 +32,54 @@ server.get(/^\/comics\/([0-9]{4})/, function (req, res) {
 });
 
 server.get('/fetch', function (req, res) {
-  var page = (req.params.page || 0) * 50;
+  var page = (parseInt(mysql.escape(req.params.page)) || 0) * 50;
+  var lastUpdate = mysql.escape(req.params.lastUpdate);
+  var lastId = parseInt(mysql.escape(req.params.lastId));
 
-  var sql = 'select * from comics where 1=1';
-  if(req.params.lastUpdate) {
-    sql += ' and last_update > ' + mysql.escape(req.params.lastUpdate);
+  var sql = 'select SQL_CALC_FOUND_ROWS * from comics where 1=1';
+  if(lastUpdate && lastUpdate != 'NULL') {
+    sql += ' and (last_update > ' + lastUpdate;
   }
-  if(req.params.lastId) {
-    sql += ' and id > ' + mysql.escape(req.params.lastId);
+  if(lastId && lastId != 'NULL') {
+    sql += ' and id > ' + lastId;
   }
   sql += ' order by last_update, id';
   sql += ' limit 50 ';
   sql += ' offset ' + page
 
-  db.query(sql, function (err, rows) {
-    if(err) throw err;
 
-    res.send(200, {
-      'comics': rows,
-      'page': page + 1,
-      'total_pages': 1
+  db.getConnection(function(err,connection){
+
+    if(err) {
+      connection.release();
+      throw err;
+    }
+
+    connection.query(sql, function (err, comics) {
+
+      if(err) {
+        connection.release();
+        throw err;
+      }
+
+      connection.query('select FOUND_ROWS() rows', function (err, pages) {
+
+        if(err) {
+          connection.release();
+          throw err;
+        }
+
+        res.send(200, {
+          'comics': comics,
+          'page': page + 1,
+          'total_pages': Math.ceil(pages[0]['rows'] / 50)
+        });
+
+      });
+
     });
-  })
+
+  });
 });
 
 server.get('/update', function (req, res) {
